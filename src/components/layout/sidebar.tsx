@@ -1,14 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
 import {
   Home,
-  TrendingUp,
-  Wallet,
   Package,
   Layers,
   Users,
@@ -21,7 +19,6 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
-  Menu,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -31,13 +28,13 @@ interface SidebarProps {
 
 export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
   const pathname = usePathname();
-  const { user, logout, togglePerfil } = useAuth();
+  const { user, logout } = useAuth();
 
   if (!user) return null;
 
   const isAdmin = user.perfil === "Administrador";
 
-  // Define os itens de menu baseados nas permissões do perfil
+  // Administrador: tudo. Vendedora: caixa, vendas, clientes, estoque e produtos.
   const menuItems = [
     {
       title: "Dashboard",
@@ -46,15 +43,9 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
       show: true,
     },
     {
-      title: "Vendas",
-      icon: TrendingUp,
-      href: "/vendas",
-      show: true,
-    },
-    {
-      title: "Caixa",
-      icon: Wallet,
-      href: "/caixa",
+      title: "Caixa / PDV",
+      icon: Store,
+      href: "/ponto-venda",
       show: true,
     },
     {
@@ -67,7 +58,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
       title: "Estoque",
       icon: Layers,
       href: "/estoque",
-      show: isAdmin, // Apenas Admin controla o módulo completo de estoque
+      show: true, // vendedora precisa dar entrada quando chega mercadoria
     },
     {
       title: "Clientes",
@@ -85,7 +76,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
       title: "Garantias",
       icon: Shield,
       href: "/garantias",
-      show: isAdmin, // Apenas Admin visualiza garantias de forma geral
+      show: isAdmin,
     },
     {
       title: "Relatórios & BI",
@@ -155,7 +146,9 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                   size={18}
                   className={cn(
                     "shrink-0 transition-transform group-hover:scale-110",
-                    isActive ? "text-primary-foreground" : "text-muted-foreground group-hover:text-sidebar-accent-foreground"
+                    isActive
+                      ? "text-primary-foreground"
+                      : "text-muted-foreground group-hover:text-sidebar-accent-foreground"
                   )}
                 />
                 {isOpen ? (
@@ -174,19 +167,6 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
 
       {/* Rodapé da Sidebar */}
       <div className="p-2 border-t border-sidebar-border bg-sidebar-accent/30 space-y-1">
-        {/* Toggle de perfil para facilidade de testes */}
-        <button
-          onClick={togglePerfil}
-          className={cn(
-            "w-full flex items-center gap-3 rounded-lg px-3 py-2 text-xs font-semibold hover:bg-indigo-600 hover:text-white text-indigo-600 dark:text-indigo-400 dark:hover:text-white transition-all shadow-sm",
-            !isOpen && "justify-center"
-          )}
-          title="Alternar Perfil (Modo Desenvolvimento)"
-        >
-          <History size={16} className="shrink-0 animate-pulse" />
-          {isOpen && <span className="whitespace-nowrap">Mudar Perfil: {user.perfil}</span>}
-        </button>
-
         {/* Link para a Vitrine */}
         <Link
           href="/"

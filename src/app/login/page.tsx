@@ -2,29 +2,35 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth, Perfil } from "@/lib/auth-context";
+import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { KeyRound, Mail, Eye, EyeOff, Loader2, Sparkles } from "lucide-react";
+import { KeyRound, Mail, Eye, EyeOff, Loader2, Sparkles, AlertCircle } from "lucide-react";
 
 export default function Login() {
   const router = useRouter();
   const { login } = useAuth();
   const [email, setEmail] = useState("");
-  const [perfil, setPerfil] = useState<Perfil>("Administrador");
-  const [password, setPassword] = useState("••••••••");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErro(null);
     setLoading(true);
     try {
-      await login(email, perfil);
-      router.push("/dashboard");
+      const resultado = await login(email, password);
+      if (resultado.success) {
+        router.push("/dashboard");
+      } else {
+        setErro(resultado.error ?? "Não foi possível entrar. Tente novamente.");
+      }
     } catch (err) {
       console.error(err);
+      setErro("Não foi possível entrar. Tente novamente.");
     } finally {
       setLoading(false);
     }
@@ -53,36 +59,10 @@ export default function Login() {
               <span>Acesso ao Sistema</span>
             </CardTitle>
             <CardDescription className="text-slate-400 text-center text-xs">
-              Escolha seu perfil operacional de trabalho
+              Entre com o e-mail e senha da sua conta
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
-            {/* Seletor de Perfil Moderno */}
-            <div className="grid grid-cols-2 gap-2.5 p-1 rounded-lg bg-slate-950 border border-slate-800/80">
-              <button
-                type="button"
-                onClick={() => setPerfil("Administrador")}
-                className={`py-2 px-3 text-xs font-semibold rounded-md transition-all ${
-                  perfil === "Administrador"
-                    ? "bg-primary text-white shadow-md shadow-primary/20"
-                    : "text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                Administrador
-              </button>
-              <button
-                type="button"
-                onClick={() => setPerfil("Vendedora")}
-                className={`py-2 px-3 text-xs font-semibold rounded-md transition-all ${
-                  perfil === "Vendedora"
-                    ? "bg-primary text-white shadow-md shadow-primary/20"
-                    : "text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                Vendedora
-              </button>
-            </div>
-
             <form onSubmit={handleSubmit} className="space-y-3.5">
               {/* E-mail */}
               <div className="space-y-1.5">
@@ -92,13 +72,10 @@ export default function Login() {
                   <Input
                     type="email"
                     required
+                    autoComplete="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder={
-                      perfil === "Administrador"
-                        ? "admin@westmaquinas.com.br"
-                        : "vendedora@westmaquinas.com.br"
-                    }
+                    placeholder="seuemail@westmaquinas.com"
                     className="pl-10 h-11 border-slate-800 bg-slate-950/60 focus:border-primary text-slate-100 placeholder:text-slate-600 text-sm outline-none"
                   />
                 </div>
@@ -106,19 +83,16 @@ export default function Login() {
 
               {/* Senha */}
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-slate-300">Senha de acesso</label>
-                  <button type="button" className="text-[10px] text-indigo-400 hover:underline">
-                    Esqueci minha senha
-                  </button>
-                </div>
+                <label className="text-xs font-semibold text-slate-300">Senha de acesso</label>
                 <div className="relative">
                   <KeyRound className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-500" />
                   <Input
                     type={showPassword ? "text" : "password"}
                     required
+                    autoComplete="current-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
                     className="pl-10 pr-10 h-11 border-slate-800 bg-slate-950/60 focus:border-primary text-slate-100 placeholder:text-slate-600 text-sm outline-none"
                   />
                   <button
@@ -131,17 +105,13 @@ export default function Login() {
                 </div>
               </div>
 
-              {/* Checkbox manter conectado */}
-              <div className="flex items-center gap-2 py-1">
-                <input
-                  type="checkbox"
-                  id="remember"
-                  className="rounded border-slate-800 bg-slate-950 text-primary focus:ring-primary/20 focus:ring-offset-slate-900"
-                />
-                <label htmlFor="remember" className="text-xs text-slate-400 select-none">
-                  Manter conectado neste dispositivo
-                </label>
-              </div>
+              {/* Mensagem de erro */}
+              {erro && (
+                <div className="flex items-center gap-2 rounded-md border border-red-900/50 bg-red-950/40 px-3 py-2 text-xs text-red-300">
+                  <AlertCircle size={14} className="shrink-0" />
+                  <span>{erro}</span>
+                </div>
+              )}
 
               {/* Botão de Entrar */}
               <Button

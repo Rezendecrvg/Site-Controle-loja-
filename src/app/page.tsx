@@ -1,40 +1,131 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
+import Image from "next/image";
+import { supabase } from "@/lib/supabase";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, MessageCircle, Sparkles, Tag, Phone, Camera, MapPin, Clock, LogIn } from "lucide-react";
+import { Search, MessageCircle, Sparkles, Tag, Phone, Camera, MapPin, Clock, LogIn, Loader2, AlertCircle, X } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogClose,
+} from "@/components/ui/dialog";
 
-const produtosVitrine = [
-  { id: 1, nome: "Máquina Reta Lanmax LM-9980D", marca: "Lanmax", categoria: "Máquinas", preco: 2300, precoOriginal: 2600, promocao: true, destaque: true, descricao: "Reta industrial Direct Drive, 9 pontos, velocidade até 5.500 RPM. Ideal para produção em escala.", parcelamento: "12x R$ 191,67" },
-  { id: 2, nome: "Overlock Lanmax LM-3800", marca: "Lanmax", categoria: "Máquinas", preco: 1850, precoOriginal: null, promocao: false, destaque: true, descricao: "Overlock 3/4 fios, diferencial com corte automático. Perfeito para acabamentos profissionais.", parcelamento: "10x R$ 185,00" },
-  { id: 3, nome: "Singer Facilita Pro 4423", marca: "Singer", categoria: "Máquinas", preco: 1050, precoOriginal: 1200, promocao: true, destaque: false, descricao: "Máquina doméstica robusta, 23 pontos, ideal para costuras pesadas, jeans e couro leve.", parcelamento: "10x R$ 105,00" },
-  { id: 4, nome: "Bobina Industrial M1 (unidade)", marca: "Genérica", categoria: "Peças", preco: 20, precoOriginal: null, promocao: false, destaque: false, descricao: "Bobina de alta qualidade compatível com máquinas industriais reta e interlock.", parcelamento: null },
-  { id: 5, nome: "Linha de Costura Premium 100m", marca: "Corrente", categoria: "Armarinho", preco: 15, precoOriginal: 18, promocao: true, destaque: false, descricao: "Linha poliéster de alta resistência, cores variadas, para costura industrial e doméstica.", parcelamento: null },
-  { id: 6, nome: "Agulha Industrial Pct c/10 un.", marca: "Groz-Beckert", categoria: "Peças", preco: 12, precoOriginal: null, promocao: false, destaque: false, descricao: "Agulhas industriais referência 16x231, para máquinas de costura retas industriais.", parcelamento: null },
-  { id: 7, nome: "Óleo Lubrificante Singer 100ml", marca: "Singer", categoria: "Peças", preco: 25, precoOriginal: null, promocao: false, destaque: false, descricao: "Óleo especial para máquinas de costura Singer e similares. Protege e lubrifica.", parcelamento: null },
-  { id: 8, nome: "Elástico Chato 3cm (metro)", marca: "Corrente", categoria: "Armarinho", preco: 3.5, precoOriginal: null, promocao: false, destaque: false, descricao: "Elástico chato com 3cm de largura, alta durabilidade, vendido por metro.", parcelamento: null },
-];
+interface Produto {
+  id: string;
+  nome: string;
+  preco_venda: number;
+  preco_custo?: number;
+  quantidade: number;
+  destaque: boolean;
+  em_promocao: boolean;
+  descricao?: string;
+  categorias?: { nome: string } | null;
+}
 
-type Categoria = "Todos" | "Máquinas" | "Peças" | "Armarinho";
+interface ProdutoExibicao {
+  id: string;
+  nome: string;
+  marca: string;
+  categoria: string;
+  preco: number;
+  precoOriginal?: number;
+  promocao: boolean;
+  destaque: boolean;
+  descricao: string;
+  quantidade: number;
+  imagem?: string;
+}
+
+type Categoria = "Todos" | "Máquinas" | "Peças";
 
 export default function Home() {
+  const [produtos, setProdutos] = useState<ProdutoExibicao[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
+  
   const [busca, setBusca] = useState("");
   const [categoria, setCategoria] = useState<Categoria>("Todos");
+  const [produtoSelecionado, setProdutoSelecionado] = useState<ProdutoExibicao | null>(null);
 
   const whatsappBase = "5521972358383";
 
-  const produtosFiltrados = produtosVitrine.filter((p) => {
-    const matchBusca =
-      p.nome.toLowerCase().includes(busca.toLowerCase()) ||
-      p.marca.toLowerCase().includes(busca.toLowerCase());
-    const matchCat = categoria === "Todos" || p.categoria === categoria;
-    return matchBusca && matchCat;
-  });
+  const carregarProdutos = useCallback(async () => {
+    setLoading(true);
+    setErro(null);
 
-  const abrirWhatsApp = (produto: (typeof produtosVitrine)[0]) => {
+    try {
+      // Buscar produtos ativos do banco
+      const { data, error } = await supabase
+        .from("produtos")
+        .select("id, nome, marca, descricao, preco_venda, preco_custo, quantidade, em_promocao, destaque, categorias(nome), fotos_produtos(*)")
+        .eq("ativo", true)
+        .order("destaque", { ascending: false })
+        .order("nome");
+
+      if (error) {
+        setErro("Erro ao carregar produtos: " + error.message);
+        setLoading(false);
+        return;
+      }
+
+      // Transformar dados para formato de exibição
+      // (a categoria "Armarinho" não aparece na vitrine pública — venda de balcão)
+      const produtosFormatados = (data ?? [])
+        .filter((p: any) => (p.categorias?.nome ?? "").toLowerCase() !== "armarinho")
+        .map((p: any) => {
+        const temFoto = p.fotos_produtos && Array.isArray(p.fotos_produtos) && p.fotos_produtos.length > 0;
+        const imagemUrl = temFoto ? p.fotos_produtos[0].url : undefined;
+        
+        console.log(`Produto: ${p.nome}`, {
+          temFoto,
+          imagemUrl,
+          fotos: p.fotos_produtos
+        });
+        
+        return {
+          id: p.id,
+          nome: p.nome,
+          marca: p.marca || "West Máquinas",
+          categoria: p.categorias?.nome || "Outros",
+          preco: Number(p.preco_venda),
+          precoOriginal: p.preco_custo ? Number(p.preco_custo) * 1.3 : undefined,
+          promocao: p.em_promocao,
+          destaque: p.destaque,
+          descricao: p.descricao || "Produto de qualidade superior",
+          quantidade: p.quantidade,
+          imagem: imagemUrl,
+        };
+      });
+
+      setProdutos(produtosFormatados);
+    } catch (error: any) {
+      setErro("Erro ao carregar produtos: " + (error?.message ?? "Erro desconhecido"));
+    }
+
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    carregarProdutos();
+  }, [carregarProdutos]);
+
+  const produtosFiltrados = useMemo(() => {
+    return produtos.filter((p) => {
+      const matchBusca =
+        p.nome.toLowerCase().includes(busca.toLowerCase()) ||
+        p.marca.toLowerCase().includes(busca.toLowerCase());
+      const matchCat = categoria === "Todos" || p.categoria === categoria;
+      return matchBusca && matchCat && p.quantidade > 0; // Só mostra produtos com estoque
+    });
+  }, [produtos, busca, categoria]);
+
+  const abrirWhatsApp = (produto: ProdutoExibicao) => {
     const mensagem = encodeURIComponent(
       `Olá! Tenho interesse no seguinte produto: *${produto.nome}* (${produto.marca}).\nPreço: R$ ${produto.preco.toFixed(2).replace(".", ",")}.\nGostaria de saber se ele ainda está disponível!`
     );
@@ -86,7 +177,7 @@ export default function Home() {
       <section className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white py-14 px-4 relative overflow-hidden">
         <div className="absolute inset-0 opacity-10 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary via-purple-500 to-transparent"></div>
         <div className="max-w-7xl mx-auto text-center relative z-10">
-          <Badge className="bg-primary/20 text-primary border-primary/30 text-xs mb-3">🎉 Promoções especiais de julho!</Badge>
+          <Badge className="bg-primary/20 text-primary border-primary/30 text-xs mb-3">🎉 Produtos em destaque!</Badge>
           <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight mb-3">
             West Máquinas<br />
             <span className="text-primary">Costura com qualidade</span>
@@ -99,147 +190,244 @@ export default function Home() {
               className="flex items-center justify-center gap-2 rounded-lg bg-[#25D366] hover:bg-[#20b859] text-white px-6 py-3 text-sm font-bold shadow-md transition-colors">
               <MessageCircle size={16} /> Solicitar via WhatsApp
             </a>
-            <button onClick={() => document.getElementById("produtos-section")?.scrollIntoView({ behavior: "smooth" })}
-              className="flex items-center justify-center gap-2 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-200 px-6 py-3 text-sm font-bold transition-colors">
-              Ver Catálogo Completo
-            </button>
+            <Button variant="outline" className="text-white border-white hover:bg-white/10">
+              ↓ Veja nossos produtos
+            </Button>
           </div>
         </div>
       </section>
 
-      {/* FILTROS DE CATEGORIA */}
+      {/* FILTROS E BUSCA */}
       <section className="max-w-7xl mx-auto px-4 py-6">
-        <div className="flex flex-wrap gap-3 justify-center">
-          {(["Todos", "Máquinas", "Peças", "Armarinho"] as Categoria[]).map((c) => (
-            <button
-              key={c}
-              onClick={() => setCategoria(c)}
-              className={`px-5 py-2.5 rounded-full text-sm font-semibold border transition-all ${
-                categoria === c
-                  ? "bg-primary text-white border-primary shadow-sm"
-                  : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-            >
-              {c}
-            </button>
-          ))}
+        <div className="flex flex-col gap-4">
+          <div className="relative sm:hidden">
+            <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar produtos..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="pl-9 h-10 text-sm"
+            />
+          </div>
+          
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            {(["Todos", "Máquinas", "Peças"] as const).map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setCategoria(cat)}
+                className={`px-4 py-2 rounded-full font-semibold text-sm transition-all whitespace-nowrap shrink-0 ${
+                  categoria === cat
+                    ? "bg-primary text-white shadow-md"
+                    : "bg-card border border-border text-foreground hover:bg-muted"
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* PRODUTOS EM PROMOÇÃO */}
-      {categoria === "Todos" && (
-        <section className="max-w-7xl mx-auto px-4 pb-8">
-          <div className="flex items-center gap-2 mb-4">
-            <Tag size={18} className="text-primary" />
-            <h2 className="text-lg font-bold">Produtos em Promoção</h2>
-          </div>
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            {produtosVitrine.filter(p => p.promocao).map(p => (
-              <div key={p.id} className="rounded-xl border border-emerald-200 dark:border-emerald-800/40 bg-emerald-50 dark:bg-emerald-950/20 p-4 hover:shadow-md transition-shadow">
-                <Badge className="bg-emerald-500 text-white text-[10px] font-bold mb-2">PROMOÇÃO</Badge>
-                <p className="font-bold text-sm">{p.nome}</p>
-                <div className="flex items-end gap-2 mt-1.5">
-                  <span className="text-xl font-extrabold text-primary">R$ {p.preco.toFixed(2).replace(".", ",")}</span>
-                  {p.precoOriginal && <span className="text-sm text-muted-foreground line-through">R$ {p.precoOriginal.toFixed(2).replace(".", ",")}</span>}
-                </div>
-                <button
-                  onClick={() => abrirWhatsApp(p)}
-                  className="mt-3 w-full flex items-center justify-center gap-2 rounded-lg bg-[#25D366] hover:bg-[#20b859] text-white py-2 text-xs font-bold transition-colors"
-                >
-                  <MessageCircle size={13} /> Solicitar pelo WhatsApp
-                </button>
-              </div>
-            ))}
+      {/* MENSAGEM DE ERRO */}
+      {erro && (
+        <section className="max-w-7xl mx-auto px-4 py-4">
+          <div className="flex items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+            <AlertCircle className="text-destructive shrink-0" size={20} />
+            <p className="text-sm text-destructive">{erro}</p>
           </div>
         </section>
       )}
 
-      {/* GRID PRINCIPAL DE PRODUTOS */}
-      <section id="produtos-section" className="max-w-7xl mx-auto px-4 pb-12">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold">{produtosFiltrados.length} produto(s) encontrado(s)</h2>
-          {busca && (
-            <button onClick={() => setBusca("")} className="text-xs text-primary hover:underline font-semibold">Limpar busca</button>
-          )}
-        </div>
-        {/* Busca mobile */}
-        <div className="relative mb-4 sm:hidden">
-          <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Buscar produto..." value={busca} onChange={(e) => setBusca(e.target.value)} className="pl-9 h-11" />
-        </div>
-        <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-          {produtosFiltrados.map((p) => (
-            <div key={p.id} className="group rounded-xl border border-border bg-card hover:shadow-lg hover:-translate-y-0.5 transition-all overflow-hidden">
-              {/* Placeholder da imagem */}
-              <div className="h-44 bg-gradient-to-br from-muted/80 to-muted flex items-center justify-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-background/60 text-muted-foreground">
-                  <Search size={24} />
-                </div>
-              </div>
-              <div className="p-4 space-y-2">
-                <div className="flex items-start justify-between gap-1">
-                  <div>
-                    {p.destaque && <Sparkles size={12} className="text-amber-400 mb-0.5" />}
-                    <p className="font-bold text-sm leading-snug">{p.nome}</p>
-                    <p className="text-[11px] text-muted-foreground">{p.marca}</p>
-                  </div>
-                  {p.promocao && (
-                    <Badge className="bg-emerald-500 text-white text-[9px] font-bold shrink-0">PROMO</Badge>
-                  )}
-                </div>
-                <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2">{p.descricao}</p>
-                <div>
-                  <div className="flex items-end gap-1.5">
-                    <span className="text-lg font-extrabold text-primary">R$ {p.preco.toFixed(2).replace(".", ",")}</span>
-                    {p.precoOriginal && <span className="text-xs text-muted-foreground line-through">R$ {p.precoOriginal}</span>}
-                  </div>
-                  {p.parcelamento && <p className="text-[10px] text-muted-foreground">{p.parcelamento} sem juros</p>}
-                </div>
-                <button
-                  onClick={() => abrirWhatsApp(p)}
-                  className="w-full flex items-center justify-center gap-2 rounded-lg bg-[#25D366] hover:bg-[#20b859] text-white py-2.5 text-xs font-bold transition-colors shadow-sm mt-1"
-                >
-                  <MessageCircle size={14} /> Solicitar pelo WhatsApp
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+      {/* LOADING */}
+      {loading && (
+        <section className="max-w-7xl mx-auto px-4 py-12">
+          <div className="flex items-center justify-center gap-2 text-muted-foreground">
+            <Loader2 className="animate-spin" size={20} />
+            <p>Carregando produtos...</p>
+          </div>
+        </section>
+      )}
 
-      {/* RODAPÉ */}
-      <footer className="border-t border-border bg-muted/30 py-10 px-4">
-        <div className="max-w-7xl mx-auto grid gap-6 grid-cols-1 md:grid-cols-3 text-sm">
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white font-extrabold text-sm">W</div>
-              <p className="font-bold">West Máquinas</p>
+      {/* GRID DE PRODUTOS */}
+      {!loading && (
+        <section className="max-w-7xl mx-auto px-4 pb-16">
+          {produtosFiltrados.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <p className="text-lg font-semibold mb-2">Nenhum produto encontrado</p>
+              <p className="text-sm">Tente buscar por outro nome ou categoria</p>
             </div>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Especialistas na venda, troca, manutenção, revisão e avaliação de máquinas de costura domésticas e industriais. Peças, acessórios e equipamentos de qualidade no Rio de Janeiro/RJ.
-            </p>
-          </div>
-          <div>
-            <p className="font-bold mb-3">Informações</p>
-            <div className="space-y-2 text-xs text-muted-foreground">
-              <div className="flex items-center gap-2"><MapPin size={13} /> Rua Rodolfo de Melo, Loja 10 – Santíssimo – Rio de Janeiro/RJ</div>
-              <div className="flex items-center gap-2"><Phone size={13} /> (21) 97235-8383 / (21) 3404-3121</div>
-              <div className="flex items-center gap-2"><Clock size={13} /> Seg–Sex: 08h–18h | Sáb e Dom: Fechado</div>
+          ) : (
+            <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+              {produtosFiltrados.map((produto) => (
+                <div
+                  key={produto.id}
+                  onClick={() => setProdutoSelecionado(produto)}
+                  className="group rounded-xl border border-border overflow-hidden hover:shadow-lg transition-all duration-300 bg-card cursor-pointer"
+                >
+                  {/* Card Header com badges */}
+                  <div className="relative bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 h-40 flex items-center justify-center overflow-hidden">
+                    {produto.imagem ? (
+                      <img 
+                        src={produto.imagem} 
+                        alt={produto.nome}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                        onError={(e) => {
+                          console.error("Erro ao carregar imagem:", produto.imagem);
+                          (e.target as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                    ) : (
+                      <div className="text-slate-400 text-sm font-medium">Sem imagem</div>
+                    )}
+                    {produto.destaque && (
+                      <Badge className="absolute top-2 right-2 bg-amber-400 text-black gap-1">
+                        <Sparkles size={12} /> Destaque
+                      </Badge>
+                    )}
+                    {produto.promocao && (
+                      <Badge className="absolute top-2 left-2 bg-red-500 text-white">
+                        🎯 Promoção
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Card Body */}
+                  <div className="p-4 space-y-3">
+                    <div>
+                      <h3 className="font-bold text-sm leading-tight line-clamp-2 group-hover:text-primary transition-colors">
+                        {produto.nome}
+                      </h3>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{produto.marca}</p>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground line-clamp-2">{produto.descricao}</p>
+
+                    {/* Preço */}
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-xl font-extrabold text-primary">
+                        R$ {produto.preco.toFixed(2).replace(".", ",")}
+                      </span>
+                      {produto.precoOriginal && produto.promocao && (
+                        <span className="text-xs text-muted-foreground line-through">
+                          R$ {produto.precoOriginal.toFixed(2).replace(".", ",")}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Categoria Badge */}
+                    <Badge variant="outline" className="text-[10px]">
+                      {produto.categoria}
+                    </Badge>
+
+                    {/* Botão */}
+                    <button
+                      onClick={() => abrirWhatsApp(produto)}
+                      className="w-full rounded-lg bg-primary hover:bg-primary/90 text-white font-semibold py-2 text-sm transition-colors flex items-center justify-center gap-2"
+                    >
+                      <MessageCircle size={14} /> Informações
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
-          <div>
-            <p className="font-bold mb-3">Redes Sociais</p>
-            <div className="flex gap-3">
-              <a href="#" className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"><Camera size={14} /> @westmaquinas</a>
-            </div>
-            <a href={`https://wa.me/${whatsappBase}`} target="_blank" rel="noopener noreferrer"
-              className="mt-3 flex items-center justify-center gap-2 rounded-lg bg-[#25D366] hover:bg-[#20b859] text-white py-2.5 text-xs font-bold transition-colors">
-              <MessageCircle size={14} /> Chamar no WhatsApp
-            </a>
-          </div>
-        </div>
-        <div className="max-w-7xl mx-auto mt-8 pt-4 border-t border-border text-center text-[11px] text-muted-foreground">
-          © 2026 West Máquinas — Todos os direitos reservados.
+          )}
+        </section>
+      )}
+
+      {/* MODAL DE PRODUTO */}
+      <Dialog open={!!produtoSelecionado} onOpenChange={(open) => !open && setProdutoSelecionado(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          {produtoSelecionado && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-2xl">{produtoSelecionado.nome}</DialogTitle>
+              </DialogHeader>
+
+              <div className="space-y-6">
+                {/* Imagem */}
+                {produtoSelecionado.imagem && (
+                  <div className="bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 rounded-lg overflow-hidden flex items-center justify-center min-h-80">
+                    <img
+                      src={produtoSelecionado.imagem}
+                      alt={produtoSelecionado.nome}
+                      className="w-full h-full object-cover max-h-80"
+                    />
+                  </div>
+                )}
+
+                {/* Informações */}
+                <div className="space-y-4">
+                  {/* Marca */}
+                  <div>
+                    <p className="text-sm text-muted-foreground">Marca</p>
+                    <p className="text-lg font-semibold">{produtoSelecionado.marca}</p>
+                  </div>
+
+                  {/* Categoria */}
+                  <div>
+                    <p className="text-sm text-muted-foreground">Categoria</p>
+                    <Badge className="mt-1">{produtoSelecionado.categoria}</Badge>
+                  </div>
+
+                  {/* Descrição */}
+                  <div>
+                    <p className="text-sm text-muted-foreground">Descrição</p>
+                    <p className="text-base">{produtoSelecionado.descricao}</p>
+                  </div>
+
+                  {/* Preço */}
+                  <div className="bg-primary/10 rounded-lg p-4 border border-primary/20">
+                    <p className="text-sm text-muted-foreground mb-2">Preço</p>
+                    <div className="flex items-baseline gap-3">
+                      <span className="text-3xl font-extrabold text-primary">
+                        R$ {produtoSelecionado.preco.toFixed(2).replace(".", ",")}
+                      </span>
+                      {produtoSelecionado.precoOriginal && produtoSelecionado.promocao && (
+                        <span className="text-sm text-muted-foreground line-through">
+                          R$ {produtoSelecionado.precoOriginal.toFixed(2).replace(".", ",")}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Estoque */}
+                  <div>
+                    <p className="text-sm text-muted-foreground">Disponibilidade</p>
+                    <p className={`text-base font-semibold ${produtoSelecionado.quantidade > 0 ? "text-green-600" : "text-red-600"}`}>
+                      {produtoSelecionado.quantidade > 0 ? `${produtoSelecionado.quantidade} em estoque` : "Fora de estoque"}
+                    </p>
+                  </div>
+
+                  {/* Botões */}
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      onClick={() => {
+                        abrirWhatsApp(produtoSelecionado);
+                        setProdutoSelecionado(null);
+                      }}
+                      className="flex-1 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold py-3 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <MessageCircle size={18} /> Solicitar via WhatsApp
+                    </button>
+                    <DialogClose asChild>
+                      <button className="px-6 rounded-lg border border-border hover:bg-muted font-semibold py-3 transition-colors">
+                        Fechar
+                      </button>
+                    </DialogClose>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* FOOTER */}
+      <footer className="bg-card border-t border-border py-6 mt-12">
+        <div className="max-w-7xl mx-auto px-4 text-center text-sm text-muted-foreground">
+          <p>© 2024 West Máquinas. Todos os direitos reservados.</p>
+          <p className="mt-2">Contato: <a href={`https://wa.me/${whatsappBase}`} className="text-primary hover:underline font-semibold">{whatsappBase.replace(/^55/, "")}</a></p>
         </div>
       </footer>
     </div>
