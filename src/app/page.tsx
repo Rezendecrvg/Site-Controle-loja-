@@ -13,7 +13,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogClose,
 } from "@/components/ui/dialog";
 
 interface Produto {
@@ -410,11 +409,12 @@ export default function Home() {
                     >
                       <MessageCircle size={18} /> Solicitar via WhatsApp
                     </button>
-                    <DialogClose asChild>
-                      <button className="px-6 rounded-lg border border-border hover:bg-muted font-semibold py-3 transition-colors">
-                        Fechar
-                      </button>
-                    </DialogClose>
+                    <button
+                      onClick={() => setProdutoSelecionado(null)}
+                      className="px-6 rounded-lg border border-border hover:bg-muted font-semibold py-3 transition-colors"
+                    >
+                      Fechar
+                    </button>
                   </div>
                 </div>
               </div>

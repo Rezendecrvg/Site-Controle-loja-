@@ -73,7 +73,7 @@ export default function DashboardPage() {
       // Produtos por categoria
       const { data: categorias } = await supabase
         .from("categorias")
-        .select("nome", { count: "exact" });
+        .select("id, nome", { count: "exact" });
 
       const produtosPerCateg: { [key: string]: number } = {};
       for (const cat of categorias || []) {
