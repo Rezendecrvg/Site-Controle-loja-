@@ -16,6 +16,7 @@ import {
   Settings,
   History,
   Store,
+  Receipt,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -46,6 +47,12 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
       title: "Caixa / PDV",
       icon: Store,
       href: "/ponto-venda",
+      show: true,
+    },
+    {
+      title: "Venda de Máquina",
+      icon: Receipt,
+      href: "/venda-maquina",
       show: true,
     },
     {
